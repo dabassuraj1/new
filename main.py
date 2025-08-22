@@ -1,14 +1,13 @@
+# main.py
 from flask import Flask, jsonify
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import requests
-import time
+import os
 
 app = Flask(__name__)
 
 # ----------------------------
-# VahanX scraping (faster, structured)
+# VahanX scraping (fast, structured)
 # ----------------------------
 def get_vehicle_details_vahanx(rc_number: str) -> dict:
     rc = rc_number.strip().upper()
@@ -17,14 +16,11 @@ def get_vehicle_details_vahanx(rc_number: str) -> dict:
     headers = {
         "Host": "vahanx.in",
         "Connection": "keep-alive",
-        "sec-ch-ua": "\"Chromium\";v=\"130\", \"Google Chrome\";v=\"130\", \"Not?A_Brand\";v=\"99\"",
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": "\"Android\"",
         "Upgrade-Insecure-Requests": "1",
         "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Referer": "https://vahanx.in/rc-search",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "en-US,en;q=0.9"
     }
 
@@ -33,7 +29,7 @@ def get_vehicle_details_vahanx(rc_number: str) -> dict:
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
     except Exception as e:
-        return None  # fallback to Selenium
+        return None
 
     def get_value(label):
         try:
@@ -65,39 +61,9 @@ def get_vehicle_details_vahanx(rc_number: str) -> dict:
         "Address": get_value("Address"),
         "City Name": get_value("City Name"),
         "Phone": get_value("Phone"),
-        "NOTE": "💀Android and ☠Rahul SAY's hello 💸"
+        "NOTE": "✅ Scraped live from VahanX"
     }
     return data
-
-# ----------------------------
-# Carinfo.app scraping (JS site, fallback)
-# ----------------------------
-def get_vehicle_details_carinfo(rc_number: str) -> dict:
-    url = f"https://www.carinfo.app/rc-details/{rc_number}"
-    
-    options = Options()
-    options.add_argument("--headless")  
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-
-    driver = webdriver.Chrome(options=options)
-    driver.get(url)
-    time.sleep(5)  # wait for JS
-
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    driver.quit()
-
-    details = {}
-    rows = soup.select("table tr")
-    for row in rows:
-        cols = row.find_all("td")
-        if len(cols) == 2:
-            key = cols[0].get_text(strip=True)
-            val = cols[1].get_text(strip=True)
-            details[key] = val
-
-    details["NOTE"] = "✅ Scraped live from carinfo.app"
-    return details if details else None
 
 # ----------------------------
 # API route
@@ -106,11 +72,12 @@ def get_vehicle_details_carinfo(rc_number: str) -> dict:
 def rc_lookup(reg_number):
     data = get_vehicle_details_vahanx(reg_number)
     if not data or all(v is None for v in data.values()):
-        data = get_vehicle_details_carinfo(reg_number)
-        if not data:
-            return jsonify({"status": "Failed", "message": "Both sources unreachable"})
+        return jsonify({"status": "Failed", "message": "VahanX unreachable or no data found"})
     return jsonify({"status": "Success", "details": data})
 
 # ----------------------------
+# Run Flask app
+# ----------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=True)
